@@ -1,18 +1,18 @@
-package pkg
+package base
 
 import (
 	"log"
 	"os"
 
 	"github.com/joho/godotenv"
-	"github.com/tmc/langchaingo/llms"
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
 type Config struct {
-	ApiKey  string
-	Model   string
-	BaseUrl string
+	ApiKey      string
+	Model       string
+	BaseUrl     string
+	DatabaseURL string
 }
 
 func GetEnv() (Config, error) {
@@ -23,13 +23,15 @@ func GetEnv() (Config, error) {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	model := os.Getenv("MODEL_NAME")
 	baseUrl := os.Getenv("BASE_URL")
+	databaseURL := os.Getenv("DATABASE_URL")
 	if apiKey == "" {
 		log.Fatal("OPENAI_API_KEY environment variable is not set")
 	}
 	return Config{
-		ApiKey:  apiKey,
-		Model:   model,
-		BaseUrl: baseUrl,
+		ApiKey:      apiKey,
+		Model:       model,
+		BaseUrl:     baseUrl,
+		DatabaseURL: databaseURL,
 	}, nil
 }
 
@@ -48,14 +50,4 @@ func CreateLLMClient() (*openai.LLM, error) {
 		log.Fatalf("Error creating LLM: %s", err)
 	}
 	return llm, nil
-}
-
-func MakeMessages(role llms.ChatMessageType, message string, messages []llms.MessageContent) ([]llms.MessageContent, error) {
-	messages = append(messages, llms.MessageContent{
-		Role: role,
-		Parts: []llms.ContentPart{
-			llms.TextPart(message),
-		},
-	})
-	return messages, nil
 }
