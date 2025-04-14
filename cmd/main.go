@@ -24,6 +24,12 @@ func main() {
 	messages := []llms.MessageContent{}
 	db, err := sql.CreatePSQLClient(ctx)
 	if err != nil {
+		log.Fatalf("Error creating table: %s", err)
+
+	}
+	err = sql.CreatePSQLTable(ctx, db)
+
+	if err != nil {
 		log.Fatalf("Error creating database client: %s", err)
 	}
 	rdb, err := sql.CreateRedisClient(ctx)

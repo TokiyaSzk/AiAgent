@@ -3,6 +3,7 @@ package base
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/tmc/langchaingo/llms/openai"
@@ -50,4 +51,25 @@ func CreateLLMClient() (*openai.LLM, error) {
 		log.Fatalf("Error creating LLM: %s", err)
 	}
 	return llm, nil
+}
+
+func GenerateSessionID() string {
+	// Generate a unique session ID using the current timestamp
+	now := time.Now()
+	return now.Format("20060102150405")
+}
+
+func isToday(t time.Time) bool {
+	now := time.Now()
+
+	// 获取今天 0 点
+	year, month, day := now.Date()
+	location := now.Location()
+	startOfDay := time.Date(year, month, day, 0, 0, 0, 0, location)
+
+	// 获取明天 0 点
+	endOfDay := startOfDay.Add(24 * time.Hour)
+
+	// 判断 t 是否在今天范围内
+	return t.After(startOfDay) && t.Before(endOfDay)
 }

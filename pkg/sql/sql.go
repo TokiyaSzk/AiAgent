@@ -2,6 +2,7 @@ package sql
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -14,6 +15,12 @@ import (
 type CharaPrompt struct {
 	Name   string
 	Prompt string
+}
+
+type Message struct {
+	Role      string `json:"role"`
+	Content   string `json:"content"`
+	Timestamp int64  `json:"timestamp"`
 }
 
 // POSTGRES
@@ -62,7 +69,58 @@ func CreatePSQLTable(ctx context.Context, db *pgxpool.Pool) error {
 	if err != nil {
 		return fmt.Errorf("error creating table: %w", err)
 	}
+
+	createTableSQL = `
+	CREATE TABLE IF NOT EXISTS documents (
+  	id SERIAL PRIMARY KEY,
+  	content TEXT,
+  	embedding vector(1536) -- OpenAI 默认维度
+	);
+	`
+
+	// 执行创建表的 SQL 语句
+	_, err = db.Exec(ctx, createTableSQL)
+	if err != nil {
+		return fmt.Errorf("error creating table: %w", err)
+	}
+
+	createTableSQL = `
+	CREATE TABLE IF NOT EXISTS memory (
+  	id SERIAL PRIMARY KEY,
+  	content TEXT,
+  	embedding vector(1536) -- OpenAI 默认维度
+	);
+	`
+
+	// 执行创建表的 SQL 语句
+	_, err = db.Exec(ctx, createTableSQL)
+	if err != nil {
+		return fmt.Errorf("error creating table: %w", err)
+	}
 	return nil
+}
+
+func GetAllDocument(ctx context.Context, db *pgxpool.Pool) ([]string, error) {
+	sqlStr := `SELECT content FROM documents`
+	rows, err := db.Query(ctx, sqlStr)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var contents []string
+	for rows.Next() {
+		var content string
+		if err := rows.Scan(&content); err != nil {
+			return nil, err
+		}
+		contents = append(contents, content)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return contents, nil
 }
 
 // REDIS
@@ -164,7 +222,6 @@ func CleanInvalidCharaIDs(ctx context.Context, rdb *redis.Client) error {
 	}
 	return nil
 }
-
 func GetCharaPrompt(ctx context.Context, rdb *redis.Client, roleID string) (*CharaPrompt, error) {
 
 	result, err := rdb.HGetAll(ctx, roleID).Result()
@@ -180,7 +237,63 @@ func GetCharaPrompt(ctx context.Context, rdb *redis.Client, roleID string) (*Cha
 	}
 	return charaPrompt, nil
 }
-
 func GetAllCharaIDs(ctx context.Context, rdb *redis.Client) ([]string, error) {
 	return rdb.SMembers(ctx, "ai:chara:ids").Result()
+}
+
+func SaveChatMessage(ctx context.Context, rdb *redis.Client, message Message, messionID string, user string) error {
+	msgJson, err := json.Marshal(message)
+	if err != nil {
+		fmt.Printf("Error marshalling message: %v\n", err)
+	}
+
+	key := "chat:" + user + ":" + messionID
+	err = rdb.RPush(ctx, key, msgJson).Err()
+
+	if err != nil {
+		panic(err)
+	}
+
+	return nil
+}
+
+func GetChatMessage(ctx context.Context, rdb *redis.Client, messionID string, user string) ([]string, error) {
+	chatList := "chat:" + user + ":" + messionID
+	result, err := rdb.LRange(ctx, chatList, 0, -1).Result()
+
+	if err != nil {
+		fmt.Printf("Error getting chat message: %v\n", err)
+		return nil, err
+	}
+	return result, nil
+}
+
+func GetDailyChatMessage(ctx context.Context, rdb *redis.Client, user string) ([]string, error) {
+	// 扫描出所有符合条件的会话 ID
+	dailyMessionIds, _, err := rdb.Scan(ctx, 0, "chat:"+user+":*", 0).Result()
+	if err != nil {
+		fmt.Printf("Error scanning for daily messages: %v\n", err)
+		return nil, err
+	}
+
+	if len(dailyMessionIds) == 0 {
+		return []string{"今天没有对话喵"}, nil
+	}
+
+	var allMessages []string
+	// 获取每个会话的消息并将它们追加到 allMessages 列表中
+	for _, messionID := range dailyMessionIds {
+		messages, err := GetChatMessage(ctx, rdb, messionID, user)
+		if err != nil {
+			fmt.Printf("Error getting chat messages for mession %s: %v\n", messionID, err)
+			continue // 如果某个会话出错，跳过这个会话
+		}
+		allMessages = append(allMessages, messages...) // 将每个会话的消息添加到最终结果中
+	}
+
+	if len(allMessages) == 0 {
+		return []string{"今天没有对话喵"}, nil
+	}
+
+	return allMessages, nil
 }
