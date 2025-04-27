@@ -12,6 +12,11 @@ import (
 	"github.com/tmc/langchaingo/llms/openai"
 )
 
+type MemoryItem struct {
+	Content  string
+	Distance float32
+}
+
 func InitEmbedder() (*embeddings.EmbedderImpl, error) {
 	config, err := base.GetEnv()
 
@@ -74,12 +79,12 @@ func InsertMemory(ctx context.Context, db *pgxpool.Pool, content string, embedde
 
 func RetrieveRelevantMemory(ctx context.Context, queryVec []float64, topK int, db *pgxpool.Pool) ([]string, error) {
 	vector := pgvector.NewVector(Float64To32(queryVec))
-
+	var results []string
 	sqlStr := `
-	SELECT content 
-	FROM memory
-	ORDER BY embedding <-> $1
-	LIMIT $2`
+    SELECT content, embedding <-> $1 AS distance
+    FROM memory
+    ORDER BY distance
+    LIMIT $2`
 
 	rows, err := db.Query(ctx, sqlStr, vector, topK)
 	if err != nil {
@@ -87,26 +92,31 @@ func RetrieveRelevantMemory(ctx context.Context, queryVec []float64, topK int, d
 	}
 	defer rows.Close()
 
-	var docs []string
-
 	for rows.Next() {
-		var content string
-		if err := rows.Scan(&content); err != nil {
+		var item MemoryItem
+		if err := rows.Scan(&item.Content, &item.Distance); err != nil {
 			return nil, err
 		}
-		docs = append(docs, content)
+		if item.Distance <= 0.5 {
+			results = append(results, item.Content)
+		}
 	}
-	return docs, nil
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
 }
 
 func RetrieveRelevantDocs(ctx context.Context, queryVec []float64, topK int, db *pgxpool.Pool) ([]string, error) {
 	vector := pgvector.NewVector(Float64To32(queryVec))
-
+	var results []string
 	sqlStr := `
-	SELECT content 
-	FROM documents
-	ORDER BY embedding <-> $1
-	LIMIT $2`
+    SELECT content, embedding <-> $1 AS distance
+    FROM documents
+    ORDER BY distance
+    LIMIT $2`
 
 	rows, err := db.Query(ctx, sqlStr, vector, topK)
 	if err != nil {
@@ -114,16 +124,21 @@ func RetrieveRelevantDocs(ctx context.Context, queryVec []float64, topK int, db 
 	}
 	defer rows.Close()
 
-	var docs []string
-
 	for rows.Next() {
-		var content string
-		if err := rows.Scan(&content); err != nil {
+		var item MemoryItem
+		if err := rows.Scan(&item.Content, &item.Distance); err != nil {
 			return nil, err
 		}
-		docs = append(docs, content)
+		if item.Distance <= 0.5 {
+			results = append(results, item.Content)
+		}
 	}
-	return docs, nil
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
 }
 
 func RunRAG(
@@ -158,6 +173,58 @@ func JoinDocs(docs []string) string {
 		joined += "- " + doc + "\n"
 	}
 	return joined
+}
+
+func ScanDocuments(ctx context.Context, db *pgxpool.Pool) ([]string, error) {
+	sqlStr := `SELECT content FROM documents`
+
+	rows, err := db.Query(ctx, sqlStr)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var docs []string
+
+	for rows.Next() {
+		var content string
+		if err := rows.Scan(&content); err != nil {
+			return nil, err
+		}
+		docs = append(docs, content)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return docs, nil
+}
+
+func ScanMemory(ctx context.Context, db *pgxpool.Pool) ([]string, error) {
+	sqlStr := `SELECT content FROM memory`
+
+	rows, err := db.Query(ctx, sqlStr)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var docs []string
+
+	for rows.Next() {
+		var content string
+		if err := rows.Scan(&content); err != nil {
+			return nil, err
+		}
+		docs = append(docs, content)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return docs, nil
 }
 
 // Float transfer

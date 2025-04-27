@@ -241,6 +241,21 @@ func GetAllCharaIDs(ctx context.Context, rdb *redis.Client) ([]string, error) {
 	return rdb.SMembers(ctx, "ai:chara:ids").Result()
 }
 
+func GetAllChatMessionID(ctx context.Context, rdb *redis.Client, user string) ([]string, error) {
+	// 扫描出所有符合条件的会话 ID
+	messionsID, _, err := rdb.Scan(ctx, 0, "chat:"+user+":*", 0).Result()
+	if err != nil {
+		fmt.Printf("Error scanning for daily messages: %v\n", err)
+		return nil, err
+	}
+
+	if len(messionsID) == 0 {
+		return []string{"这个人没有对话喵"}, nil
+	}
+
+	return messionsID, nil
+}
+
 func SaveChatMessage(ctx context.Context, rdb *redis.Client, message Message, messionID string, user string) error {
 	msgJson, err := json.Marshal(message)
 	if err != nil {

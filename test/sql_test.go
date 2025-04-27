@@ -54,3 +54,26 @@ func TestSaveChatMessage(t *testing.T) {
 
 	t.Logf("保存聊天消息成功")
 }
+
+func TestGetChatMessage(t *testing.T) {
+	ctx := context.Background()
+
+	rdb, err := sql.CreateRedisClient(ctx)
+
+	if err != nil {
+		t.Fatalf("创建数据库连接失败: %v", err)
+	}
+	defer rdb.Close()
+	messages, err := sql.GetChatMessage(ctx, rdb, "20250414210843", "tokiya")
+	if err != nil {
+		t.Fatalf("获取聊天消息失败: %v", err)
+	}
+
+	if len(messages) == 0 {
+		t.Fatalf("获取的聊天消息数量为0")
+	}
+	t.Logf("获取到的聊天消息数量: %d", len(messages))
+	for _, msg := range messages {
+		t.Logf("聊天消息内容: %s", msg)
+	}
+}

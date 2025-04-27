@@ -6,6 +6,8 @@ import (
 	"net/http"
 
 	"github.com/aiagent/internal/handler"
+	"github.com/aiagent/pkg/base"
+	"github.com/aiagent/pkg/rag"
 	"github.com/aiagent/pkg/sql"
 	"github.com/gorilla/websocket"
 )
@@ -46,6 +48,11 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	ctx := context.Background()
 
+	llm, err := base.CreateLLMClient()
+	if err != nil {
+		log.Fatal("Error creating LLM: ", err)
+		return
+	}
 	db, err := sql.CreatePSQLClient(ctx)
 	if err != nil {
 		log.Fatalf("Error creating client: %s", err)
@@ -62,13 +69,21 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error creating Redis client: %s", err)
 	}
+	embedder, err := rag.InitEmbedder()
+	if err != nil {
+		log.Fatal("Error initializing embedder: ", err)
+		return
+	}
 	http.HandleFunc("/ws", wsHandler)
 	http.HandleFunc("/ws/chat/temp", handler.TextChatHandler)
 	http.HandleFunc("/ws/chat/user", func(w http.ResponseWriter, r *http.Request) {
-		handler.UserChatHandler(w, r, rdb)
+		handler.UserChatHandler(w, r, rdb, db)
 	})
 	http.HandleFunc("/ws/chat/user/continue", func(w http.ResponseWriter, r *http.Request) {
 		handler.UserChatHandlerWithSessionID(w, r, rdb)
+	})
+	http.HandleFunc("/ws/data", func(w http.ResponseWriter, r *http.Request) {
+		handler.RagHandler(w, r, rdb, db, embedder, llm)
 	})
 	log.Println("WebSocket server started on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))

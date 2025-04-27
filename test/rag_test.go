@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"log"
 	"testing"
 
 	"github.com/aiagent/pkg/base"
@@ -39,19 +40,20 @@ func TestInsertAndRetrieveDocument(t *testing.T) {
 	assert.NoError(t, err, "初始化嵌入模型应成功")
 
 	// 测试文档
-	testDoc := "人工智能(AI)是计算机科学的一个分支，致力于创建能够执行通常需要人类智能的任务的机器。"
+	testDoc := "舞萌DX（又称maimai）是有日本世嘉公司制作的世界人气音乐游戏。它拥有国服、日服、国际服三个区服。"
 
 	// 插入文档
 	err = rag.InsertDocument(ctx, db, testDoc, embedder)
 	assert.NoError(t, err, "插入文档应成功")
 
 	// 嵌入查询文本
-	queryText := "什么是AI？"
+	queryText := "舞萌介绍"
 	queryVec, err := rag.EmbedText(ctx, queryText, embedder)
 	assert.NoError(t, err, "嵌入查询文本应成功")
 
 	// 检索相关文档
 	docs, err := rag.RetrieveRelevantDocs(ctx, queryVec, 1, db)
+	log.Printf("检索到的文档: %v", docs)
 	assert.NoError(t, err, "检索文档应成功")
 	assert.NotEmpty(t, docs, "应该至少检索到一个文档")
 }
@@ -135,4 +137,34 @@ func TestJoinDocs(t *testing.T) {
 	joined := rag.JoinDocs(docs)
 	expected := "- 文档1\n- 文档2\n- 文档3\n"
 	assert.Equal(t, expected, joined, "应正确连接文档")
+}
+
+func TestInsertMemoryAndRetrieveRelevantMemory(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.CreatePSQLClient(ctx)
+	assert.NoError(t, err, "创建数据库连接应成功")
+	defer db.Close()
+
+	embedder, err := rag.InitEmbedder()
+	assert.NoError(t, err, "初始化嵌入模型应成功")
+
+	// 测试文档
+	testDoc := "你是Tokiya制作的智慧生命体"
+
+	// 插入文档
+	err = rag.InsertMemory(ctx, db, testDoc, embedder)
+	assert.NoError(t, err, "插入文档应成功")
+
+	// 嵌入查询文本
+	queryText := "你是谁"
+	queryVec, err := rag.EmbedText(ctx, queryText, embedder)
+	assert.NoError(t, err, "嵌入查询文本应成功")
+
+	// 检索相关文档
+	docs, err := rag.RetrieveRelevantMemory(ctx, queryVec, 1, db)
+	assert.NoError(t, err, "检索文档应成功")
+	assert.NotEmpty(t, docs, "应该至少检索到一个文档")
+	assert.Contains(t, docs[0], "Tokiya", "检索到的文档应包含预期内容")
+
+	t.Logf("检索到的相关内存: %v", docs)
 }
